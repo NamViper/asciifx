@@ -109,7 +109,7 @@ tools/install.sh                # do it
 
 | Flag | Default | Meaning |
 |---|---|---|
-| `--logo PATH` | `<clone>/skull_logo.png` | logo image for the banner, screensaver and summon (stored as an absolute path) |
+| `--logo PATH` | `<clone>/skull_logo.png` | logo image for the banner, screensaver and summon (stored as an absolute path); the skull is an example, use your own |
 | `--name NAME` | `$USER` | the name `asciifx summon` reveals (exported as `ASCIIFX_NAME`) |
 | `--style STYLE` | `dots` | logo style for the startup banner: `dots`, `sketch`, `outline`, `blocks`, `ascii`, `classic`, … |
 | `--screensaver-after SECS` | `120` | zsh: screensaver after SECS idle at the prompt; `0` = no screensaver. Bash has none. |
@@ -234,7 +234,9 @@ Then the user, in a **new** terminal window:
 
 Re-run `tools/install.sh` with new flags for anything that lives in the startup file.
 
-**Your own logo.** Any PNG or JPEG works best with a dark subject on a plain white or transparent
+**Your own logo.** The bundled `skull_logo.png` is only an example; replace it with your own image. The README's
+["Using your own logo"](README.md#using-your-own-logo) section has the full walkthrough, including how to measure the
+eye and jaw positions for a new sidecar. In short: any PNG or JPEG works best with a dark subject on a plain white or transparent
 background. The banner inverts it so the ink glows, removes the background around the subject and crops
 it. Preview it first, then install it:
 

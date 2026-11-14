@@ -1,5 +1,8 @@
 # asciifx
 
+[![CI](https://github.com/NamViper/asciifx/actions/workflows/ci.yml/badge.svg)](https://github.com/NamViper/asciifx/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 Terminal ASCII/Unicode art and animation: a Python library and the `asciifx` CLI.
 Animated shell startup banners, an idle screensaver, image → text art in a dozen
 styles, effects (rain, decode, glitch, fire, starfield, CRT, particles, lightning,
@@ -9,6 +12,10 @@ fonts, spinners for your own scripts, and video/ANSI-art playback. Terminal only
 Truecolor with automatic 256-color fallback, diff-based flicker-free redraws,
 resize handling, and the terminal is always restored (Ctrl-C, kill, Ctrl-Z).
 Piped output gets plain text with no escape codes.
+
+<!-- Record with: vhs docs/demo.tape, then uncomment
+![asciifx demo](docs/demo.gif)
+-->
 
 ## Install
 
@@ -43,6 +50,50 @@ asciifx banner 'ACCESS GRANTED' --effect decode # big letters, animated in place
 asciifx fx matrix --palette blood               # demo any effect
 asciifx spin --style pulse                      # spinner demo
 ```
+
+## Using your own logo
+
+`skull_logo.png` (and its `skull_logo.asciifx.json`) is only an **example** so everything works out of the box.
+Replace it with your own image; nothing in the code depends on the skull.
+
+1. **Pick an image.** PNG or JPEG, ideally a dark subject on a plain white or transparent background. The
+   banner inverts it so the ink glows, removes the background and crops to the subject.
+2. **Preview it** exactly as the banner will draw it:
+   ```bash
+   asciifx img ~/Pictures/logo.png --banner-look                # banner look
+   asciifx img ~/Pictures/logo.png --banner-look --style all    # every style side by side
+   ```
+   If it looks wrong, try a version with more contrast, a cleaner background or a tighter crop.
+3. **Use it.** For one run: `--logo ~/Pictures/logo.png` on `startup`, `screensaver` or `summon`. Permanently:
+   ```bash
+   tools/install.sh --logo ~/Pictures/logo.png    # plus your other flags (--name, --style, …)
+   ```
+   Re-running the installer replaces its blocks with the flags you give it this time, so repeat all of them.
+   Don't move the image afterwards: the shell blocks store its absolute path. The cached rendering in
+   `~/.cache/asciifx` is refreshed automatically when the file changes.
+4. **Optional: eyes and jaw for summon's `eyes` finale.** These positions belong to one specific image, so a new
+   logo needs its own sidecar, `logo.png` → `logo.asciifx.json` in the same folder. Without one, `eyes` simply
+   falls back to the `shockwave` finale, so you can skip this step. To create it:
+   ```bash
+   asciifx img ~/Pictures/logo.png --banner-look --style classic --width 100 > /tmp/logo.txt
+   wc -L -l /tmp/logo.txt        # W = longest line (columns), H = number of lines
+   ```
+   Open `/tmp/logo.txt` in an editor that shows the cursor column and line, then compute the fractions:
+   - eye centre: `cx = column / W`, `cy = line / H`. Radii: `rx = half the eye's width / W`,
+     `ry = half its height / H`.
+   - jaw: `y` = the line between the teeth `/ H`, and `x0`, `x1` = the jaw's left and right edges `/ W`.
+
+   Start from `skull_logo.asciifx.json` (format in [Summon](#summon)); use 1-based lines and columns or 0-based
+   consistently, a cell of difference doesn't matter. The fractions hold for every size and style. If your logo
+   has no face, leave out `eyes` or `jaw` (but not both). Check the result and adjust:
+   ```bash
+   asciifx summon --logo ~/Pictures/logo.png --finale eyes
+   ```
+   A mistake in the sidecar prints a warning naming the bad field (e.g. `eyes[0].cx must be in [0, 1]`) and the
+   show runs without the features.
+
+You can delete `skull_logo.png` and `skull_logo.asciifx.json` from your clone once you use your own logo. If you
+do, always pass `--logo` to `tools/install.sh`, since its default is the skull.
 
 ## Shell integration (zsh, bash, tmux)
 
@@ -189,6 +240,7 @@ Building blocks: `asciifx.core` (`Grid`, `Cell`, `Layer`, `compose`, the fixed-t
 ```bash
 .venv/bin/pytest -q          # full suite (tests/test_install_script.py runs the installers in a temp HOME)
 tools/check_py312.sh         # compile + import + vermin + pytest under Python 3.12 (uv-managed)
+vhs docs/demo.tape           # re-record docs/demo.gif (needs vhs)
 ```
 
 Architecture rules live in `CLAUDE.md`.
