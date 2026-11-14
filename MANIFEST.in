@@ -1,0 +1,5 @@
+graft tests
+graft tools
+include skull_logo.png
+include skull_logo.asciifx.json
+global-exclude __pycache__ *.py[cod]

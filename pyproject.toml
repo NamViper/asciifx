@@ -1,0 +1,59 @@
+[build-system]
+requires = ["setuptools>=77"]  # SPDX `license = "MIT"`
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "asciifx"
+version = "0.1.0"
+description = "Terminal ASCII/Unicode art and animation: banners, spinners, screensaver, player"
+readme = "README.md"
+requires-python = ">=3.12"
+# numpy + Pillow are only imported lazily (image conversion, the startup logo on
+# a cache miss), so `import asciifx`, banner() and spinner() never load them.
+dependencies = ["numpy", "Pillow"]
+license = "MIT"
+license-files = ["LICENSE"]
+keywords = [
+    "ascii-art", "ansi", "terminal", "animation", "banner", "spinner",
+    "screensaver", "braille", "unicode", "cli",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Intended Audience :: End Users/Desktop",
+    "Operating System :: POSIX",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Artistic Software",
+    "Topic :: Multimedia :: Graphics",
+    "Topic :: Terminals",
+    "Typing :: Typed",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+video = ["imageio-ffmpeg"]
+
+# Fill in once the project has a public home (left out so no made-up URL ships
+# in the package metadata):
+# [project.urls]
+# Homepage = "https://..."
+# Source = "https://..."
+# Issues = "https://..."
+
+[project.scripts]
+asciifx = "asciifx.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+asciifx = ["py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
