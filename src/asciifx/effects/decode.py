@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from functools import lru_cache
 
 from ..core.grid import BLANK, Cell, Color, Grid
-from .base import cell_hashes, hash32, remix, time_bucket
+from .base import cell_hashes, finite_t, hash32, remix, time_bucket
 
 DECODE_CHARSET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789#$%&*+=?@<>/\\|[]{}"
 BRAILLE_CHARSET = "".join(chr(c) for c in range(0x2801, 0x2900))
@@ -97,6 +97,7 @@ class Decode:
         return _lock_fractions(self.seed, grid.width, grid.height, self.sweep, *extent)
 
     def apply(self, grid: Grid, t: float) -> Grid:
+        t = finite_t(t)
         if t >= self.end:
             return grid.copy()
         locks = self.lock_fractions(grid)

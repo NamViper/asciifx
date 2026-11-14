@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from functools import lru_cache
 
 from ..core.grid import Cell, Color, Grid
-from .base import Effect, cell_hashes, hash32, remix, time_bucket
+from .base import Effect, cell_hashes, finite_t, hash32, remix, time_bucket
 from .decode import BRAILLE_CHARSET, DECODE_HIGHLIGHT, column_extent
 
 MORPH_CHARSET = BRAILLE_CHARSET[::4] + "ABCDEFHKMNRSTXZ0123456789#$%&*+=?@<>/\\|[]{}~^"
@@ -106,6 +106,7 @@ class Morph:
         )
 
     def apply(self, grid: Grid, t: float) -> Grid:
+        t = finite_t(t)
         tgt = self.target
         w, h = grid.width, grid.height
         if (w, h) != (tgt.width, tgt.height):
@@ -169,6 +170,7 @@ class Reverse:
         return self.effect.end_for(grid)
 
     def apply(self, grid: Grid, t: float) -> Grid:
+        t = finite_t(t)
         start, end = self.start, self.end_for(grid)
         u = start + end - t if t < end else math.nextafter(start, -math.inf)
         out = self.effect.apply(grid, u)

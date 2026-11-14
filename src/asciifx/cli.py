@@ -67,12 +67,18 @@ fi
 # rest of ~/.zshrc, so the block is skipped; exported, child shells would inherit
 # the short re-arm timeouts and bash would log out after a few idle seconds, so
 # it is un-exported first.
+# zsh < 5.3 has no add-zle-hook-widget: without keystroke tracking the alarm
+# would fire mid-typing, so the block is skipped there.
+# A screensaver killed by a signal it can't catch (kill -9) never leaves its
+# alternate screen; the trap does that for it. zsh itself restores the tty
+# modes after a command that fails, and a repeated "leave" is harmless.
 ZSH_SCREENSAVER = """\
 # >>> asciifx screensaver >>>
 # Full-screen screensaver after {idle} s without typing at the prompt; any key returns.
 # Disable for one shell with: ASCIIFX_NO_SCREENSAVER=1 zsh
 if [[ -o interactive && -t 0 && -t 1 && ${{TERM:-dumb}} != dumb && -z ${{ASCIIFX_NO_SCREENSAVER-}}
-      && ${{(t)TMOUT-}} != *readonly* ]] && (( ${{+commands[asciifx]}} )); then
+      && ${{(t)TMOUT-}} != *readonly* ]] && (( ${{+commands[asciifx]}} )) \\
+    && autoload -Uz is-at-least && is-at-least 5.3; then  # 5.3+: add-zle-hook-widget
   zmodload zsh/datetime
   typeset -g +x TMOUT  # never pass the short timeouts below on to child shells
   typeset -gi _asciifx_idle_after={idle} _asciifx_last_key=$EPOCHSECONDS
@@ -88,6 +94,7 @@ if [[ -o interactive && -t 0 && -t 1 && ${{TERM:-dumb}} != dumb && -z ${{ASCIIFX
     fi
     TMOUT=$_asciifx_idle_after
     asciifx screensaver{args} --idle-since $_asciifx_last_key
+    (( $? > 128 )) && print -n -- '\\e[?2026l\\e[0m\\e[?7h\\e[?25h\\e[?1049l'  # killed: leave its screen
     _asciifx_last_key=$EPOCHSECONDS
     zle && zle reset-prompt
   }}

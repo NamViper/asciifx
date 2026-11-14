@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from typing import Any, NamedTuple
 
 from ..core.grid import Cell, Color, Grid
-from .base import hash32, lerp_color
+from .base import finite_t, hash32, lerp_color
 
 DRIP_TRAIL: Color = (130, 0, 6)
 DRIP_HEAD: Color = (235, 25, 35)
@@ -151,6 +151,7 @@ class Drip:
     # -- rendering -----------------------------------------------------------
 
     def apply(self, grid: Grid, t: float) -> Grid:
+        t = finite_t(t)
         w, h = grid.width, grid.height
         if t < self.start or t >= self.end or not grid.cells:
             return grid.copy()

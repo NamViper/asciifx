@@ -6,7 +6,7 @@ import math
 from dataclasses import dataclass
 
 from ..core.grid import BLANK, Cell, Color, Grid
-from .base import hash32, noise, time_bucket
+from .base import finite_t, hash32, noise, time_bucket
 
 HOLO_GHOST: tuple[Color, Color] = ((255, 30, 70), (0, 225, 255))
 """Ghost colors: the copy shifted left (red), the copy shifted right (cyan)."""
@@ -79,7 +79,7 @@ class Hologram:
         k = min(1.0, self.intensity)
         if height <= 0 or k <= 0:
             return {}
-        b = time_bucket(t - self.start, self.rate)
+        b = time_bucket(finite_t(t) - self.start, self.rate)
         out: dict[int, str] = {}
         for j in range(2):
             r = hash32(self.seed, _SALT, b, j)
@@ -92,6 +92,9 @@ class Hologram:
         return out
 
     def apply(self, grid: Grid, t: float) -> Grid:
+        if t >= self.end:  # before finite_t: an endless hologram is still the identity at t = inf
+            return grid.copy()
+        t = finite_t(t)
         w, h, cells = grid.width, grid.height, grid.cells
         k = min(1.0, self.intensity)
         if t < self.start or t >= self.end or k <= 0 or not cells:

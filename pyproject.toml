@@ -38,12 +38,10 @@ classifiers = [
 dev = ["pytest>=8"]
 video = ["imageio-ffmpeg"]
 
-# Fill in once the project has a public home (left out so no made-up URL ships
-# in the package metadata):
-# [project.urls]
-# Homepage = "https://..."
-# Source = "https://..."
-# Issues = "https://..."
+[project.urls]
+Homepage = "https://github.com/NamViper/asciifx"
+Source = "https://github.com/NamViper/asciifx"
+Issues = "https://github.com/NamViper/asciifx/issues"
 
 [project.scripts]
 asciifx = "asciifx.cli:main"

@@ -1117,7 +1117,9 @@ def default_loader(logo_path: str | os.PathLike[str], *, cache: Path | None = No
                 grid = load_logo(path, max_w, max_h, {**LOGO_PARAMS, "style": style}, cache=cache)
             except (TypeError, ValueError, KeyError):  # converter without this style
                 grid = load_logo(path, max_w, max_h, LOGO_PARAMS, cache=cache)
-        except OSError:
+        except Exception:  # unreadable, corrupt or truncated image: rain only
+            if os.environ.get("ASCIIFX_DEBUG"):
+                raise
             return None
         return recolor(grid, THEME.logo, THEME.logo_bottom)
 

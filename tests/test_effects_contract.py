@@ -1,15 +1,16 @@
 """The rules every effect follows, plus base helpers, Chain, registry and palettes."""
 
 import copy
+import math
 
 import pytest
 
 from asciifx.core import BLANK, Cell, Grid
 from asciifx.effects import (
-    BLOOD, EFFECTS, GREEN, PALETTES, Chain, Decode, Glitch, Matrix, Palette, Typewriter, chain,
-    fade, hash32, is_blank, make, noise,
+    BLOOD, EFFECTS, GREEN, PALETTES, Chain, Decode, Fire, Glitch, Hologram, Matrix, Morph, Palette,
+    Reverse, Starfield, Typewriter, chain, fade, hash32, is_blank, make, noise,
 )
-from asciifx.effects.base import cell_hashes, gradient, hash_table, time_bucket
+from asciifx.effects.base import T_LIMIT, cell_hashes, finite_t, gradient, hash_table, time_bucket
 
 
 def mixed_grid(w: int = 30, h: int = 10) -> Grid:
@@ -64,6 +65,41 @@ def test_contract(name, grid_name):
         if t >= end:
             assert out == grid
     assert grid == before  # input never mutated
+
+
+SMALL = mixed_grid(12, 5)
+NONFINITE_CASES = {
+    **EFFECT_CASES,
+    "fire_endless": Fire(duration=None),
+    "starfield_endless": Starfield(duration=None),
+    "hologram_endless": Hologram(duration=None),
+    "morph": Morph(target=Grid.from_text("\n".join(["morph target"] * 5))),  # 12x5, like SMALL
+    "reverse_typewriter": Reverse(Typewriter()),
+}
+TRANSITIONS = {"morph", "reverse_typewriter"}  # not the identity once done
+
+
+@pytest.mark.parametrize("t", [math.nan, math.inf, -math.inf], ids=["nan", "inf", "-inf"])
+@pytest.mark.parametrize("name", NONFINITE_CASES)
+def test_non_finite_t(name, t):
+    effect, grid = NONFINITE_CASES[name], SMALL
+    before = copy.deepcopy(grid)
+    out = effect.apply(grid, t)
+    assert isinstance(out, Grid) and out is not grid and out.cells is not grid.cells
+    assert (out.width, out.height, len(out.cells)) == (grid.width, grid.height, len(grid.cells))
+    assert all(isinstance(c, Cell) and len(c.ch) == 1 for c in out.cells)
+    assert effect.apply(grid, t) == out
+    assert grid == before
+    if math.isnan(t):  # NaN reads as the start of the timeline
+        assert out == effect.apply(grid, 0.0)
+    elif t > 0:  # the finished state
+        assert out == effect.apply(grid, effect.end_for(grid) + 1.0)
+        if name not in TRANSITIONS:
+            assert out == grid
+    else:  # long before start (where that state is static: Decode's scramble flickers)
+        early = effect.apply(grid, -1e6)
+        if effect.apply(grid, -2e6) == early:
+            assert out == early
 
 
 @pytest.mark.parametrize("name", EFFECT_CASES)
@@ -138,6 +174,12 @@ def test_gradient_and_time_bucket():
     assert gradient(((1, 2, 3),), 2) == ((1, 2, 3), (1, 2, 3)) and gradient(((1, 2, 3),), 0) == ()
     assert [time_bucket(t, 10) for t in (0.0, 0.09, 0.1, 0.25, -0.01)] == [0, 0, 1, 2, -1]
     assert time_bucket(0.05, 10, 0.5) == 1 and time_bucket(5.0, 0) == 0
+
+
+def test_finite_t():
+    assert finite_t(math.nan) == 0.0
+    assert finite_t(math.inf) == T_LIMIT and finite_t(-math.inf) == -T_LIMIT
+    assert finite_t(1.5) == 1.5 and finite_t(-1e300) == -1e300 and finite_t(3) == 3
 
 
 # --- Chain ------------------------------------------------------------------

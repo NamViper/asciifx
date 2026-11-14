@@ -8,7 +8,7 @@ from functools import lru_cache
 from typing import Literal
 
 from ..core.grid import Cell, Color, Grid
-from .base import GOLDEN32, M32, gradient
+from .base import GOLDEN32, M32, finite_t, gradient
 
 FIRE_RAMP = " .:░▒▓█"
 """Glyphs from the faintest flame to the hottest (index 0 is never drawn)."""
@@ -162,6 +162,9 @@ class Fire:
         return _smooth(u)
 
     def apply(self, grid: Grid, t: float) -> Grid:
+        if t >= self.end:  # before finite_t: an endless fire is still the identity at t = inf
+            return grid.copy()
+        t = finite_t(t)
         w, h, cells = grid.width, grid.height, grid.cells
         env = self.envelope(t)
         if env <= 0.0 or not cells or self.height <= 0:

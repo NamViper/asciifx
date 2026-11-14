@@ -136,3 +136,10 @@ def test_jaw_drops_and_chatters():
             else:
                 assert out.get(x, y) == g.get(x, y)
     assert e.apply(g, 1.0) == g == e.apply(g, e.end)
+
+
+@pytest.mark.parametrize("effect", [EyeGlow(start=0.0, eyes=(EYE,)), JawChatter(start=0.0, jaw=PlacedJaw(6, 4, 14))])
+def test_eye_and_jaw_survive_non_finite_t(effect):
+    g = face()
+    assert effect.apply(g, math.nan) == effect.apply(g, 0.0)  # NaN reads as 0, like the effects
+    assert effect.apply(g, math.inf) == g == effect.apply(g, -math.inf)

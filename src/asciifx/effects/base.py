@@ -11,6 +11,7 @@ Randomness comes from integer hashing (``hash32`` / ``noise``), never from the
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from functools import lru_cache
 from typing import Protocol
@@ -134,6 +135,18 @@ def gradient(stops: tuple[Color, ...], n: int) -> tuple[Color, ...]:
 def time_bucket(t: float, rate: float, phase: float = 0.0) -> int:
     """Index of the 1/rate-second slot containing t (0 when rate <= 0)."""
     return int((t * rate + phase) // 1) if rate > 0 else 0
+
+
+T_LIMIT = 1e9
+"""Seconds (about 31 years): where ``finite_t`` puts t = +-inf."""
+
+
+def finite_t(t: float) -> float:
+    """``t`` safe for int(), floor() and hashing: NaN reads as 0.0 (the start of
+    the timeline), +-inf as +-T_LIMIT; finite values pass through unchanged."""
+    if math.isfinite(t):
+        return t
+    return 0.0 if math.isnan(t) else math.copysign(T_LIMIT, t)
 
 
 @dataclass(frozen=True)

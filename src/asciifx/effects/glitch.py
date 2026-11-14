@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from ..core.grid import BLANK, Cell, Color, Grid
-from .base import hash32, hash_table, noise, remix32, time_bucket
+from .base import finite_t, hash32, hash_table, noise, remix32, time_bucket
 
 GLITCH_COLORS: tuple[Color, ...] = ((0, 255, 255), (255, 0, 255), (255, 40, 40))
 GLITCH_CHARSET = "░▒▓█#$%&@!?/\\<>=+*~^"
@@ -73,6 +73,7 @@ class Glitch:
         return None
 
     def apply(self, grid: Grid, t: float) -> Grid:
+        t = finite_t(t)
         w, h, cells = grid.width, grid.height, grid.cells
         if t >= self.end or self.intensity <= 0 or not cells:
             return grid.copy()

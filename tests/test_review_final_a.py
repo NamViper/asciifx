@@ -1,6 +1,7 @@
 """Regressions from the final review (part A): shell snippets, terminal modes, Ctrl-C at startup."""
 
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -99,6 +100,38 @@ def test_snippets_stay_quiet_on_dumb_terminals(capsys, fake_tty, tmp_path, term)
         out, log = run_shell(fake_tty, tmp_path, argv, rc + probe)  # a real terminal: still on
         assert [line.split()[0] for line in log] == ["startup"], shell
         assert shell == "bash" or "TRAP=1" in out
+
+
+@needs_zsh
+def test_zsh_screensaver_is_skipped_before_zsh_5_3(capsys, fake_tty, tmp_path):
+    """zsh < 5.3 has no add-zle-hook-widget: the alarm couldn't see typing and would
+    fire mid-command-line. (Simulated: a stub is-at-least that says "too old".)"""
+    rc = snippet(capsys, "zsh", "--screensaver-after", "120")
+    probe = "print -r -- TRAP=${+functions[TRAPALRM]} TMOUT=${TMOUT-unset}\n"
+    out, log = run_shell(fake_tty, tmp_path, ZSH, "is-at-least() { return 1 }\n" + rc + probe)
+    assert "TRAP=0 TMOUT=unset" in out and "command not found" not in out
+    assert [line.split()[0] for line in log] == ["startup"]  # the banner still runs
+    out, _ = run_shell(fake_tty, tmp_path, ZSH, rc + probe)  # this zsh (>= 5.3): armed
+    assert "TRAP=1 TMOUT=120" in out
+
+
+@needs_zsh
+@pytest.mark.parametrize("killed", [True, False])
+def test_zsh_trap_leaves_the_screen_of_a_killed_screensaver(capsys, tmp_path, killed):
+    """kill -9 runs no cleanup: the shell was left on the alternate screen with a
+    hidden cursor. The trap leaves it then, and only then."""
+    rc = snippet(capsys, "zsh", "--screensaver-after", "120")
+    trap = re.search(r"^  TRAPALRM\(\) \{\n.*?^  \}\n", rc, re.M | re.S)
+    assert trap is not None
+    fake = tmp_path / "asciifx"
+    fake.write_text("#!/bin/sh\nprintf 'ENTERED'\n" + ("kill -9 $$\n" if killed else ""))
+    fake.chmod(0o755)
+    script = (f"zmodload zsh/datetime\npath=({tmp_path} $path)\n{trap.group()}"
+              "typeset -gi _asciifx_idle_after=1 _asciifx_last_key=$(( EPOCHSECONDS - 10 ))\n"
+              "TRAPALRM\nprint -n END\n")
+    r = subprocess.run(["zsh", "-f", "-c", script], capture_output=True, text=True, timeout=20)
+    assert r.returncode == 0, r.stderr
+    assert r.stdout == ("ENTERED" + LEAVE if killed else "ENTERED") + "END"
 
 
 # -- terminal modes: Ctrl-S ----------------------------------------------------------------

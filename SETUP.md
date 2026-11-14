@@ -93,7 +93,7 @@ Windows Terminal, iTerm2, GNOME Terminal, Konsole, kitty, WezTerm, Alacritty and
 ## 2. Clone
 
 ```bash
-git clone <REPO-URL> ~/asciiart
+git clone https://github.com/NamViper/asciifx.git ~/asciiart
 cd ~/asciiart
 ```
 
@@ -348,7 +348,7 @@ blocks are in `~/.zshrc` / `~/.bashrc`, not in `~/.zshenv` or `~/.profile`.
 **`asciifx: startup banner failed: …`.** The logo can't be read (moved, deleted, not an image). Re-run
 `tools/install.sh --logo <path>`. `ASCIIFX_DEBUG=1 asciifx startup` shows the full traceback.
 
-**The screensaver never starts.** It is zsh only, and it waits for idle time *at the prompt*. It doesn't
+**The screensaver never starts.** It is zsh only (5.3 or newer; `echo $ZSH_VERSION`), and it waits for idle time *at the prompt*. It doesn't
 count while a command runs or while you type. Check `echo $TMOUT` in a new shell; it should show the idle
 seconds. Prompt themes or plugins that set `TMOUT`/`TRAPALRM` themselves (prompt clocks do this) clash with
 it. The one defined last wins. Use `--screensaver-after 0` plus the tmux lock instead.
@@ -360,7 +360,7 @@ it. The one defined last wins. Use `--screensaver-after 0` plus the tmux lock in
 - Clone into the Linux filesystem (`~/asciiart`). Under `/mnt/c` everything is slow.
 - `set: Illegal option -`, `$'\r': command not found` or `bad interpreter: No such file or directory`
   means the scripts have Windows (CRLF) line endings. Re-clone inside WSL with
-  `git clone -c core.autocrlf=false <REPO-URL>`.
+  `git clone -c core.autocrlf=false https://github.com/NamViper/asciifx.git`.
 - Windows Terminal supports truecolor and braille out of the box.
 - Windows Pythons on PATH (`/mnt/c/…/python.exe`) are ignored. Install a Linux Python (section 1).
 

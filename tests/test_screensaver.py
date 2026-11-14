@@ -315,6 +315,23 @@ def test_default_loader_missing_file(tmp_path):
     assert Screensaver(load).logos(W, H) is None
 
 
+def test_default_loader_corrupt_file_is_rain_only(tmp_path, monkeypatch):
+    from asciifx import startup
+
+    monkeypatch.delenv("ASCIIFX_DEBUG", raising=False)
+    img = tmp_path / "logo.png"
+    img.write_bytes(b"x")
+
+    def broken(path, w, h, params, *, cache=None):
+        raise RuntimeError("decoder blew up")  # not an OSError: still no crash
+
+    monkeypatch.setattr(startup, "load_logo", broken)
+    assert default_loader(img)("dots", 40, 20) is None
+    monkeypatch.setenv("ASCIIFX_DEBUG", "1")
+    with pytest.raises(RuntimeError):
+        default_loader(img)("dots", 40, 20)
+
+
 def test_default_loader_passes_style_and_falls_back(tmp_path, monkeypatch):
     from asciifx import startup
 

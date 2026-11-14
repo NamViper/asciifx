@@ -7,7 +7,7 @@ from typing import NamedTuple
 
 from ..core.easing import in_out_cubic, in_quad, out_cubic, out_quad
 from ..core.grid import BLANK, Cell, Color, Grid
-from .base import cell_hashes, hash32, lerp_color, noise, remix, time_bucket
+from .base import cell_hashes, finite_t, hash32, lerp_color, noise, remix, time_bucket
 
 CRT_LINE: Color = (255, 236, 236)
 CRT_GLOW: Color = (210, 28, 36)
@@ -107,6 +107,7 @@ class CRT:
 
     def beam(self, t: float, width: int, height: int) -> Beam:
         """The tube's state at t on a width x height screen."""
+        t = finite_t(t)
         on = self.mode == "on"
         if t < self.start:
             return self._full("dark" if on else "picture", width, height)
@@ -140,6 +141,7 @@ class CRT:
     # -- rendering -----------------------------------------------------------
 
     def apply(self, grid: Grid, t: float) -> Grid:
+        t = finite_t(t)
         w, h = grid.width, grid.height
         beam = self.beam(t, w, h)
         if beam.stage == "picture" or not grid.cells:

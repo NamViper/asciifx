@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from ..core.grid import Cell, Color, Grid
-from .base import hash32, lerp_color
+from .base import finite_t, hash32, lerp_color
 
 BOLT_CORE: Color = (255, 255, 255)
 BOLT_GLOW: Color = (255, 60, 70)
@@ -183,6 +183,7 @@ class Lightning:
         return (1.0 - u) ** 1.6
 
     def apply(self, grid: Grid, t: float) -> Grid:
+        t = finite_t(t)
         w, h = grid.width, grid.height
         if t < self.start or t >= self.end or not grid.cells:
             return grid.copy()

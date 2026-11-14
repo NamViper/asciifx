@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from ..core.grid import BLANK, Cell, Color, Grid
+from .base import finite_t
 
 _EPS = 1e-9  # so float fuzz like 0.3 * 10 = 2.999... still counts 3 cells
 
@@ -69,6 +70,7 @@ class Typewriter:
 
     def typed(self, t: float, total: int) -> int:
         """Number of cells typed at time t, out of ``total``."""
+        t = finite_t(t)
         if t < self.start:
             return 0
         # Done from the end on, compared as times: at a large start, (t - start) * rate
@@ -84,6 +86,7 @@ class Typewriter:
         return min(total, int((t - self.start) * rate + _EPS))
 
     def apply(self, grid: Grid, t: float) -> Grid:
+        t = finite_t(t)
         spans = row_spans(grid)
         total = sum(b - a for _, a, b in spans)
         n = self.typed(t, total)

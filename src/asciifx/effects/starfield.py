@@ -8,7 +8,7 @@ from functools import lru_cache
 from typing import Literal, NamedTuple
 
 from ..core.grid import CELL_ASPECT, Cell, Color, Grid
-from .base import gradient, hash32
+from .base import finite_t, gradient, hash32
 
 STAR_RAMP = ".·+*#"
 """Star glyphs from the farthest to the nearest (single-width only)."""
@@ -178,6 +178,9 @@ class Starfield:
         return out
 
     def apply(self, grid: Grid, t: float) -> Grid:
+        if t >= self.end:  # before finite_t: an endless starfield is still the identity at t = inf
+            return grid.copy()
+        t = finite_t(t)
         w, h, cells = grid.width, grid.height, grid.cells
         visible = self.stars(w, h, t)
         if not visible:

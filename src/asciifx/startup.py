@@ -371,6 +371,11 @@ def run(
 
     term = terminal if terminal is not None else Terminal(fullscreen=False)
     cols, rows = term.size()
-    banner = build(cols, rows, logo_path, theme=theme, duration=duration, style=style)
+    try:
+        banner = build(cols, rows, logo_path, theme=theme, duration=duration, style=style)
+    except Exception:  # corrupt/truncated logo: the text-only banner, not an error line in every new shell
+        if logo_path is None or os.environ.get("ASCIIFX_DEBUG"):
+            raise
+        banner = build(cols, rows, None, theme=theme, duration=duration, style=style)
     if banner is not None:
         animate_inline(banner.frame, banner.duration, terminal=term)

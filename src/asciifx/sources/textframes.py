@@ -33,8 +33,14 @@ are ignored. Tabs advance to the next multiple of 8 columns and ``\\r`` returns
 to the start of the line. Files that aren't valid UTF-8 are read as CP437 (DOS
 ANSI art), and a SAUCE record after the DOS end-of-file mark is ignored.
 
+Limits, so a small crafted file can't take gigabytes: like at a screen edge,
+moves stop at row / column 1000; and a frame whose cursor movement and tabs
+would need more than 4,000,000 blank cells (a full 1000x1000 frame needs ~1M)
+is rejected with ValueError. Plain text, however long, isn't limited.
+
 Frames are placed in the union bounding box of all frames' visible cells
 (margins that every frame shares are trimmed), and that box is centered.
+Only the frames' text is kept in memory; a frame is parsed when it is needed.
 
 Stdlib only.
 """
@@ -44,7 +50,9 @@ from __future__ import annotations
 import math
 import os
 import re
+from collections.abc import Iterator, Sequence
 from pathlib import Path
+from typing import overload
 
 from ..core.grid import BLANK, Cell, Color, Grid
 
@@ -80,6 +88,12 @@ _MAX_MOVE = 1000
 """Cursor-movement sequences stop at this column / row (or at text that is already
 further out), the way a terminal stops them at the screen edge, so a sequence like
 ``ESC[999999999C`` can't make a frame billions of cells wide."""
+
+_MAX_PAD = 4_000_000
+"""Most blank cells that cursor movement and tabs may add to one frame (32 MB of cell
+slots); a frame needing more is rejected. A full 1000x1000 frame of positioned text
+needs ~1M, but without a cap ``ESC[999Cx`` lines (10 bytes for 1000 cells) turn a
+1 MB file into 100M cells. Text itself is one cell per character and isn't counted."""
 
 
 def _param(p: str) -> int:
@@ -197,10 +211,14 @@ def _extended_color(parts: list[str], *, colons: bool) -> Color | None:
 
 
 def _parse(text: str) -> list[list[Cell]]:
-    """Rows of cells of one frame of (possibly ANSI-colored) text."""
+    """Rows of cells of one frame of (possibly ANSI-colored) text.
+
+    Raises ValueError if reaching moved-to columns needs more than ``_MAX_PAD`` blanks.
+    """
     pen = _Pen()
     rows: list[list[Cell]] = [[]]
     y = x = 0
+    padded = 0  # blanks added so far to reach columns the cursor jumped to
     for m in _TOKEN.finditer(text):
         chunk = m.group("text")
         if chunk is None:
@@ -241,6 +259,13 @@ def _parse(text: str) -> list[list[Cell]]:
                 rows.extend([] for _ in range(y + 1 - len(rows)))
                 row = rows[y]
                 if x >= len(row):
+                    # Checked before allocating. Every jump counts, not just C/G/H: after a long
+                    # line, ESC[B keeps the column, so 4 bytes can pad a whole row that wide.
+                    padded += x - len(row)
+                    if padded > _MAX_PAD:
+                        raise ValueError(
+                            f"too much cursor movement (more than {_MAX_PAD:,} blank cells)"
+                        )
                     row.extend([BLANK] * (x + 1 - len(row)))
                 row[x] = pen.cell(ch)
                 x += 1
@@ -248,7 +273,10 @@ def _parse(text: str) -> list[list[Cell]]:
 
 
 def ansi_to_grid(text: str) -> Grid:
-    """A grid of (possibly ANSI-colored) text, one row per line, as wide as its widest line."""
+    """A grid of (possibly ANSI-colored) text, one row per line, as wide as its widest line.
+
+    Raises ValueError if its cursor movement needs too many blank cells (see the module
+    docstring)."""
     rows = _parse(text)
     width = max((len(row) for row in rows), default=0)
     return Grid(width, len(rows), [c for row in rows for c in row + [BLANK] * (width - len(row))])
@@ -306,40 +334,80 @@ def _natural_key(path: Path) -> tuple[list[int | str], str]:
     return [int(p) if i % 2 else p.lower() for i, p in enumerate(parts)], path.name
 
 
-def _bbox(frames: list[list[list[Cell]]]) -> tuple[int, int, int, int]:
-    """(left, top, right, bottom) of the visible cells of all frames; (0, 0, 0, 0) if none."""
+type Box = tuple[int, int, int, int]
+"""(left, top, right, bottom), right and bottom exclusive."""
+
+
+def _bbox(texts: list[str]) -> Box:
+    """The box of the visible cells of all frames; (0, 0, 0, 0) if none.
+
+    Each frame is parsed and dropped before the next, so this needs memory for one
+    frame, not all of them."""
     left = top = math.inf
     right = bottom = 0
-    for rows in frames:
+    for i, text in enumerate(texts):
+        try:
+            rows = _parse(text)
+        except ValueError as exc:
+            raise ValueError(f"frame {i + 1}: {exc}") from None
         for y, row in enumerate(rows):
             xs = [x for x, cell in enumerate(row) if cell != BLANK]
             if xs:
                 left, right = min(left, xs[0]), max(right, xs[-1] + 1)
                 top, bottom = min(top, y), max(bottom, y + 1)
+        del rows  # else it holds this frame while the next one is parsed
     if left is math.inf:
         return 0, 0, 0, 0
     return int(left), int(top), right, bottom
 
 
-def _place(art: Grid, width: int, height: int) -> Grid:
-    """``art`` centered in a ``width`` x ``height`` grid, cropped (centered) if larger."""
+def _window(rows: list[list[Cell]], x: int, y: int, width: int, height: int) -> Grid:
+    """The ``width`` x ``height`` part of parsed ``rows`` whose top-left is (x, y), which
+    may be negative; cells outside the rows are BLANK."""
     grid = Grid(width, height)
-    x0, y0 = (width - art.width) // 2, (height - art.height) // 2
-    xs, xe = max(0, -x0), min(art.width, width - x0)
-    if xs >= xe:
-        return grid
-    for y in range(max(0, -y0), min(art.height, height - y0)):
-        src = art.cells[y * art.width + xs : y * art.width + xe]
-        dst = (y0 + y) * width + x0 + xs
-        grid.cells[dst : dst + len(src)] = src
+    xs, xe = max(0, x), max(0, x + width)  # clamped: a negative slice bound would wrap
+    for gy in range(max(0, -y), min(height, len(rows) - y)):
+        part = rows[y + gy][xs:xe]
+        dst = gy * width + xs - x
+        grid.cells[dst : dst + len(part)] = part
     return grid
+
+
+class _Frames(Sequence[Grid]):
+    """Read-only frames cropped to the shared box, each parsed from its text when indexed.
+
+    Storing every cropped frame let a few KB of crafted input (many tiny frames whose
+    cells lie far apart, so the shared box is ~1000x1000) take gigabytes.
+    """
+
+    def __init__(self, texts: list[str], box: Box) -> None:
+        self._texts = texts
+        self._box = box
+
+    def __len__(self) -> int:
+        return len(self._texts)
+
+    @overload
+    def __getitem__(self, i: int) -> Grid: ...
+    @overload
+    def __getitem__(self, i: slice) -> list[Grid]: ...
+    def __getitem__(self, i: int | slice) -> Grid | list[Grid]:
+        if isinstance(i, slice):
+            return [self[j] for j in range(*i.indices(len(self)))]
+        left, top, right, bottom = self._box
+        return _window(_parse(self._texts[i]), left, top, right - left, bottom - top)
+
+    def __iter__(self) -> Iterator[Grid]:
+        return map(self.__getitem__, range(len(self)))
 
 
 class TextFramesSource:
     """Frames of text played at ``fps``, centered; see the module docstring for the format.
 
     ``frame(t, ...)`` shows frame ``floor(t * fps)``, wrapping with ``loop`` and
-    holding the last frame without it. All frames are parsed up front.
+    holding the last frame without it. Only the frames' text is kept: a frame is
+    parsed when it is shown or indexed (and once at the start, one at a time, to
+    find the shared box).
     """
 
     def __init__(
@@ -382,18 +450,14 @@ class TextFramesSource:
         self.fps = fps
         self.loop = loop
         self.delimiter = delimiter
-        parsed = [_parse(text) for text in texts]
-        left, top, right, bottom = _bbox(parsed)
-        width, height = right - left, bottom - top
-        self.frames: list[Grid] = []
-        """Each frame, cropped to the shared bounding box (all the same size)."""
-        for rows in parsed:
-            cells = [BLANK] * (width * height)
-            for y in range(height):
-                row = rows[top + y] if top + y < len(rows) else []
-                part = row[left:right]
-                cells[y * width : y * width + len(part)] = part
-            self.frames.append(Grid(width, height, cells))
+        self._texts = texts
+        try:  # parses every frame, so frame() and frames[i] can't fail later
+            self._box = _bbox(texts)
+        except ValueError as exc:
+            raise ValueError(f"{self.path}: {exc}") from None
+        self.frames: Sequence[Grid] = _Frames(texts, self._box)
+        """Each frame, cropped to the shared bounding box (all the same size). Lazy:
+        indexing parses the frame."""
         self._cache: tuple[tuple[int, int, int], Grid] | None = None
 
     @property
@@ -411,5 +475,11 @@ class TextFramesSource:
         width, height = max(0, width), max(0, height)
         key = (self.index(t), width, height)
         if self._cache is None or self._cache[0] != key:
-            self._cache = (key, _place(self.frames[key[0]], width, height))
+            # Cut the visible part straight out of the parsed frame instead of building the
+            # cropped frame first: that can be far bigger than the screen. Every frame is
+            # blank outside the shared box, so the window may extend past it.
+            left, top, right, bottom = self._box
+            x0, y0 = (width - (right - left)) // 2, (height - (bottom - top)) // 2  # odd: left/up
+            rows = _parse(self._texts[key[0]])
+            self._cache = (key, _window(rows, left - x0, top - y0, width, height))
         return self._cache[1].copy()

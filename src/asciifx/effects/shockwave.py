@@ -8,7 +8,7 @@ from dataclasses import dataclass
 
 from ..core.easing import out_quad
 from ..core.grid import Cell, Color, Grid
-from .base import lerp_color
+from .base import finite_t, lerp_color
 
 SHOCK_COLOR: Color = (255, 230, 225)
 SHOCK_RING: Color = (255, 70, 70)
@@ -85,6 +85,7 @@ class Shockwave:
         return self.max_radius(width, height) * out_quad(u), (1.0 - u) ** 1.3
 
     def apply(self, grid: Grid, t: float) -> Grid:
+        t = finite_t(t)
         w, h = grid.width, grid.height
         state = self.crest(t, w, h) if grid.cells else None
         if state is None:

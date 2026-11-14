@@ -10,7 +10,7 @@ from typing import Any, NamedTuple
 
 from ..core.easing import in_out_cubic, in_out_sine, out_cubic, out_quad
 from ..core.grid import BLANK, Cell, Color, Grid
-from .base import hash32, lerp_color
+from .base import finite_t, hash32, lerp_color
 
 ASSEMBLE_HOT: Color = (255, 60, 40)
 ASSEMBLE_WHITE_HOT: Color = (255, 226, 190)
@@ -365,6 +365,7 @@ class Assemble:
     # -- rendering -----------------------------------------------------------
 
     def apply(self, grid: Grid, t: float) -> Grid:
+        t = finite_t(t)
         w, h = grid.width, grid.height
         if t >= self.end:
             return grid.copy()
@@ -534,6 +535,7 @@ class Glint:
         return lo - self.width + (hi - lo + 2 * self.width) * p
 
     def apply(self, grid: Grid, t: float) -> Grid:
+        t = finite_t(t)
         w, h = grid.width, grid.height
         c = self.centre(grid, t) if self.width > 0 and self.strength > 0 else None
         if c is None:

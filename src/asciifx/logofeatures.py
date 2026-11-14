@@ -33,7 +33,7 @@ from pathlib import Path
 from typing import Any
 
 from .core.grid import BLANK, Cell, Color, Grid
-from .effects.base import lerp_color
+from .effects.base import finite_t, lerp_color
 
 SIDECAR_SUFFIX = ".asciifx.json"
 FORMAT_VERSION = 1
@@ -259,7 +259,9 @@ class EyeGlow:
         return cells
 
     def apply(self, grid: Grid, t: float) -> Grid:
-        lv = self.level(t)
+        if t >= self.end:  # before finite_t: an endless glow is still the identity at t = inf
+            return grid.copy()
+        lv = self.level(finite_t(t))
         if lv <= 0.0 or not self.eyes or not grid.cells:
             return grid.copy()
         out = list(grid.cells)
@@ -323,7 +325,7 @@ class JawChatter:
         return max(0, rows)
 
     def apply(self, grid: Grid, t: float) -> Grid:
-        d = self.drop(t)
+        d = self.drop(finite_t(t))
         jaw = self.jaw
         if d == 0 or jaw is None or not grid.cells:
             return grid.copy()

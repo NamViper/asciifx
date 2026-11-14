@@ -8,7 +8,7 @@ from functools import lru_cache
 from typing import NamedTuple
 
 from ..core.grid import BLANK, Cell, Color, Grid
-from .base import cell_hashes, gradient, hash32, noise, remix, time_bucket
+from .base import cell_hashes, finite_t, gradient, hash32, noise, remix, time_bucket
 
 # Single-cell-width glyphs only: half-width katakana (U+FF66..U+FF9D), digits,
 # ASCII symbols. Full-width characters would take two cells and break the grid.
@@ -127,6 +127,7 @@ class Matrix:
         )
 
     def apply(self, grid: Grid, t: float) -> Grid:
+        t = finite_t(t)
         w, h, cells = grid.width, grid.height, grid.cells
         if t >= self.end or not cells:
             return grid.copy()

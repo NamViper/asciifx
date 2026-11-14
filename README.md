@@ -63,7 +63,7 @@ twice gives you two copies, so prefer `tools/install.sh`, which swaps the old bl
   a boot log types out, then system info (user@host, OS, kernel, uptime, date). It stays above your prompt.
   Skip it with any key. Disable it for one shell with `ASCIIFX_NO_BANNER=1 zsh` (or `bash`). It never runs in
   non-interactive shells or when output isn't a terminal.
-- **screensaver** (zsh only): starts after N seconds without typing at the prompt. It never starts
+- **screensaver** (zsh 5.3+ only): starts after N seconds without typing at the prompt. It never starts
   mid-typing or while a command runs. Any key returns you to your prompt untouched. Disable it for one shell
   with `ASCIIFX_NO_SCREENSAVER=1 zsh`. Bash gets no idle screensaver, because bash's `TMOUT` closes the
   shell instead of running a hook. Use the tmux lock there.

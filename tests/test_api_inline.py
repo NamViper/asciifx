@@ -4,6 +4,8 @@ import io
 import threading
 import time
 
+import pytest
+
 from vt import VT
 
 from asciifx.api import animate_inline, banner
@@ -59,6 +61,26 @@ def test_startup_banner_end_to_end(fake_tty, monkeypatch):
     expected = build(100, 30, None, info=INFO).final()
     assert vt.grid(0, 0, expected.width, expected.height) == expected
     assert vt.cursor == (0, expected.height)
+
+
+@pytest.mark.parametrize("data", [b"not an image at all", b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00"])
+def test_startup_with_a_corrupt_logo_shows_the_text_banner(fake_tty, monkeypatch, tmp_path, data):
+    """Garbage or a truncated PNG: every new shell printed "startup banner failed"."""
+    monkeypatch.setattr("asciifx.startup.sysinfo", lambda now=None: INFO)
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
+    monkeypatch.delenv("ASCIIFX_DEBUG", raising=False)
+    bad = tmp_path / "logo.png"
+    bad.write_bytes(data)
+    fake_tty.resize(100, 30)
+    run(bad, duration=0.2, terminal=inline_term(fake_tty))
+    vt = VT(100, 30).feed(fake_tty.output())
+    expected = build(100, 30, None, info=INFO).final()
+    assert vt.grid(0, 0, expected.width, expected.height) == expected
+    with pytest.raises(OSError):  # build itself still reports it (summon --logo shows the error)
+        build(100, 30, bad, info=INFO, cache=tmp_path)
+    monkeypatch.setenv("ASCIIFX_DEBUG", "1")
+    with pytest.raises(OSError):
+        run(bad, duration=0.2, terminal=inline_term(fake_tty))
 
 
 def test_startup_skips_when_terminal_too_small(fake_tty, monkeypatch):
