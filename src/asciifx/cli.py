@@ -165,6 +165,21 @@ def _style_list(value: str) -> tuple[str, ...]:
     return styles
 
 
+def _logo_size(value: str) -> tuple[int, int]:
+    from .sources.styles import parse_logo_size
+
+    try:
+        return parse_logo_size(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from None
+
+
+def _logo_size_arg(value: str) -> str:
+    """Like ``_logo_size`` but keeps the text, for writing it back into a shell snippet."""
+    _logo_size(value)
+    return value.strip().lower()
+
+
 def _gradient(value: str) -> tuple[tuple[int, int, int], tuple[int, int, int]]:
     parts = value.split(":")
     if len(parts) != 2:
@@ -260,6 +275,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--logo", default=os.environ.get("ASCIIFX_LOGO"),
                    help="image to use as the logo (default: $ASCIIFX_LOGO)")
     p.add_argument("--style", choices=list(STYLES), help="logo style (default: dots)")
+    p.add_argument("--size", type=_logo_size, metavar="small|large|COLSxROWS",
+                   help="max logo size: small = 40x20, large = 64x32 (default: per style; dots, blocks "
+                        "and outline are small, the others large); shrinks to fit the terminal")
     p.add_argument("--duration", type=_non_negative, default=3.5, help="seconds (default: 3.5)")
     _color_arg(p)
 
@@ -312,6 +330,8 @@ def build_parser() -> argparse.ArgumentParser:
                    help="image to use as the logo (default: $ASCIIFX_LOGO)")
     p.add_argument("--no-banner", action="store_true", help="leave out the startup banner")
     p.add_argument("--style", choices=list(STYLES), help="logo style for the startup banner")
+    p.add_argument("--size", metavar="small|large|COLSxROWS", type=_logo_size_arg,
+                   help="max logo size for the startup banner")
     p.add_argument("--screensaver-after", type=_non_negative_int, default=0, metavar="SECONDS",
                    help="start the screensaver after this many idle seconds at the prompt (0 = off)")
     return parser
@@ -467,7 +487,7 @@ def _cmd_startup(args: argparse.Namespace) -> int:
     from . import startup
 
     try:
-        startup.run(args.logo, duration=args.duration, style=args.style,
+        startup.run(args.logo, duration=args.duration, style=args.style, size=args.size,
                     terminal=_terminal(args, fullscreen=False))
     except (KeyboardInterrupt, SystemExit):
         raise
@@ -555,7 +575,7 @@ def _cmd_shell_init(args: argparse.Namespace) -> int:
         command = _tmux_quote(f"asciifx screensaver{logo} --idle-for {idle}")
         print(TMUX_SNIPPET.format(command=command, idle=args.screensaver_after or 120), end="")
         return 0
-    banner_args = logo + (f" --style {args.style}" if args.style else "")
+    banner_args = logo + (f" --style {args.style}" if args.style else "") + (f" --size {args.size}" if args.size else "")
     blocks = []
     if args.logo:  # lets `asciifx summon` / `screensaver` / `startup` find the logo without --logo
         path = shlex.quote(os.path.abspath(os.path.expanduser(args.logo)))

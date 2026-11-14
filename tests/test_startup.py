@@ -185,3 +185,29 @@ def test_glyph_styles_get_a_bigger_logo_box():
     assert preferred_size("letters") == (64, 32) and preferred_size("sketch") == (64, 32)
     assert choose_arrangement(140, 45, 37, 10, preferred_size("letters")) == ("side", (64, 32))
     assert choose_arrangement(140, 45, 37, 10, preferred_size("dots")) == ("side", (40, 20))
+
+
+def test_parse_logo_size():
+    from asciifx.sources.styles import parse_logo_size
+
+    assert parse_logo_size("small") == (40, 20) and parse_logo_size("LARGE") == (64, 32)
+    assert parse_logo_size("50x25") == (50, 25)
+    for bad in ("big", "64", "0x10", "64x-1", "axb", "2000x10"):
+        with pytest.raises(ValueError):
+            parse_logo_size(bad)
+
+
+def test_build_size_overrides_the_style_box(tmp_path, monkeypatch):
+    img = tmp_path / "logo.png"
+    img.write_bytes(b"fake")
+    boxes = []
+
+    def fake_load_logo(path, w, h, params, cache=None):
+        boxes.append((w, h))
+        return Grid.from_text("#" * 10)
+
+    monkeypatch.setattr("asciifx.startup.load_logo", fake_load_logo)
+    build(140, 45, img, info=INFO, style="dots")
+    build(140, 45, img, info=INFO, style="dots", size=(64, 32))
+    build(140, 45, img, info=INFO, style="sketch", size=(40, 20))
+    assert boxes == [(40, 20), (64, 32), (40, 20)]

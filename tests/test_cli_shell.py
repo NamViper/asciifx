@@ -188,3 +188,21 @@ def test_summon_options_reach_the_show(monkeypatch, tmp_path):
     (show,) = seen
     assert show.name == "NamViper" and show.assembly == "vortex" and show.finale == "eyes"
     assert show.features is not None  # skull_logo.asciifx.json sits next to the logo
+
+
+def test_shell_init_passes_banner_size(capsys):
+    out = snippet(capsys, "--logo", "/x/skull.png", "--style", "dots", "--size", "Large")
+    assert "asciifx startup --logo /x/skull.png --style dots --size large" in out
+
+
+def test_startup_rejects_bad_size(capsys):
+    with pytest.raises(SystemExit):
+        main(["startup", "--size", "huge"])
+    assert "expected small, large or COLSxROWS" in capsys.readouterr().err
+
+
+def test_startup_passes_size(monkeypatch):
+    seen = {}
+    monkeypatch.setattr("asciifx.startup.run", lambda logo, **kw: seen.update(kw))
+    assert main(["startup", "--size", "50x25"]) == 0
+    assert seen["size"] == (50, 25)

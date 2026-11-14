@@ -336,14 +336,18 @@ def build(
     info: list[tuple[str, str]] | None = None,
     logo_params: dict[str, Any] | None = None,
     style: str | None = None,
+    size: tuple[int, int] | None = None,
     cache: Path | None = None,
 ) -> StartupBanner | None:
-    """Lay out the banner for a cols x rows terminal; None if it can't fit."""
+    """Lay out the banner for a cols x rows terminal; None if it can't fit.
+
+    ``size`` is the max logo (columns, rows); default: the style's ``preferred_size``.
+    """
     lines = text_lines(sysinfo() if info is None else info, theme, max_width=min(60, cols - MARGIN - 1))
     text_w, text_h = block_size(lines)
     from .sources.styles import preferred_size, scramble_charset
 
-    choice = choose_arrangement(cols, rows, text_w, text_h, preferred_size(style))
+    choice = choose_arrangement(cols, rows, text_w, text_h, size or preferred_size(style))
     if choice is None:
         return None
     kind, box = choice
@@ -363,6 +367,7 @@ def run(
     duration: float = 3.5,
     theme: Theme = BLOOD,
     style: str | None = None,
+    size: tuple[int, int] | None = None,
     terminal: Any = None,
 ) -> None:
     """Show the startup banner inline below the cursor; any key skips to the end."""
@@ -372,10 +377,10 @@ def run(
     term = terminal if terminal is not None else Terminal(fullscreen=False)
     cols, rows = term.size()
     try:
-        banner = build(cols, rows, logo_path, theme=theme, duration=duration, style=style)
+        banner = build(cols, rows, logo_path, theme=theme, duration=duration, style=style, size=size)
     except Exception:  # corrupt/truncated logo: the text-only banner, not an error line in every new shell
         if logo_path is None or os.environ.get("ASCIIFX_DEBUG"):
             raise
-        banner = build(cols, rows, None, theme=theme, duration=duration, style=style)
+        banner = build(cols, rows, None, theme=theme, duration=duration, style=style, size=size)
     if banner is not None:
         animate_inline(banner.frame, banner.duration, terminal=term)

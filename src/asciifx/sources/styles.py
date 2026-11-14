@@ -71,4 +71,24 @@ def preferred_size(style: str | None) -> tuple[int, int]:
     more cells before the shapes read as an image instead of texture.
     """
     mode = STYLES.get(style or "", {}).get("mode", "braille")
-    return (64, 32) if mode in ("glyph", "ramp") else (40, 20)
+    return LOGO_SIZES["large"] if mode in ("glyph", "ramp") else LOGO_SIZES["small"]
+
+
+LOGO_SIZES = {"small": (40, 20), "large": (64, 32)}
+
+
+def parse_logo_size(value: str) -> tuple[int, int]:
+    """``small`` | ``large`` | ``COLSxROWS`` (e.g. ``64x32``) -> max logo (columns, rows).
+
+    The logo keeps its aspect ratio inside this box and still shrinks to fit the terminal.
+    """
+    v = value.strip().lower()
+    if v in LOGO_SIZES:
+        return LOGO_SIZES[v]
+    try:
+        w, h = (int(n) for n in v.split("x"))
+    except ValueError:
+        raise ValueError(f"expected small, large or COLSxROWS like 64x32, got {value!r}") from None
+    if not (1 <= w <= 1000 and 1 <= h <= 1000):
+        raise ValueError(f"logo size must be between 1x1 and 1000x1000, got {value!r}")
+    return w, h
