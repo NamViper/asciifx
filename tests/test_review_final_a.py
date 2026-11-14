@@ -158,7 +158,11 @@ def test_ctrl_c_while_parsing_the_command_line_is_not_a_traceback(monkeypatch):
         raise KeyboardInterrupt
 
     monkeypatch.setattr(cli, "build_parser", interrupted)
-    assert main(["startup"]) == 130
+    try:
+        status = main(["startup"])
+    except KeyboardInterrupt:  # (caught here, or it would end the whole pytest run)
+        pytest.fail("KeyboardInterrupt escaped main()")
+    assert status == 130
 
 
 def test_ctrl_c_while_importing_the_cli_exits_130_quietly():
@@ -175,3 +179,17 @@ def test_ctrl_c_while_importing_the_cli_exits_130_quietly():
     proc = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=60,
                           env=dict(os.environ, PYTHONPATH=str(SRC)))
     assert (proc.returncode, proc.stderr) == (130, "")
+
+
+# -- the rain clock's outline: off by default now, still available -------------------------
+
+
+@pytest.mark.parametrize("args,outline", [([], False), (["--clock-outline"], True),
+                                          (["--no-clock-outline"], False)])
+def test_clock_outline_flag(monkeypatch, args, outline):
+    import asciifx.cli as cli
+
+    seen = []
+    monkeypatch.setattr(cli, "play", lambda source, **kw: seen.append(source))
+    assert main(["screensaver", "--seed", "1", *args]) == 0
+    assert seen[0].clock_outline is outline

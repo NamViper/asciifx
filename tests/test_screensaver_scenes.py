@@ -11,7 +11,7 @@ from asciifx.effects import BLOOD, GREEN, Glitch, Hologram, Palette, Starfield
 from asciifx.effects.base import gradient
 from asciifx.fonts import render_text, text_width
 from asciifx.screensaver import (
-    CLOCK_FADE, HOLOGRAM_SCALE, OUTLINE_CHAR, SCALE_STEPS, SCENES, WARP_EMPTY, Screensaver,
+    CLOCK_COLOR, CLOCK_FADE, HOLOGRAM_SCALE, OUTLINE_CHAR, SCALE_STEPS, SCENES, WARP_EMPTY, Screensaver,
     clock_mask, sysmon_panel,
 )
 from asciifx.sysmon import Stats
@@ -317,20 +317,78 @@ def test_clock_mask_is_the_block_font_scaled_and_centred():
     assert small is not None and len(small[0]) == sum(c.ch != " " for c in render_text("12:34").cells)
 
 
-def test_rain_glyphs_inside_the_digits_are_bright():
+def test_every_digit_cell_is_a_white_glyph_at_every_instant():
     ss = saver(show_clock=True)
     rain = rain_phase(ss)
-    inside, edge = clock_mask("12:34", W, H)
+    inside = clock_mask("12:34", W, H)[0]
     inside_set = set(inside)
-    out = ss.frame(rain.start + 6.0, W, H)
-    lit_in = [out.cells[i] for i in inside if out.cells[i].ch not in (" ", OUTLINE_CHAR)]
-    lit_out = [c for i, c in enumerate(out.cells) if i not in inside_set and c.ch != " "]
-    assert lit_in and all(min(c.fg) >= 190 for c in lit_in)
-    assert sum(min(c.fg) >= 190 for c in lit_out) < 0.15 * len(lit_out)
-    plain = saver(show_clock=False).frame(rain.start + 6.0, W, H)
-    assert [i for i in range(W * H) if out.cells[i] != plain.cells[i]] and all(
-        i in inside_set for i in range(W * H) if out.cells[i] != plain.cells[i]
-    )  # only the digits differ
+    for t in (rain.start, rain.start + 0.01, rain.start + 1.3, rain.start + 6.0, rain.start + 17.45, rain.end - 0.01):
+        out = ss.frame(t, W, H)
+        assert all(out.cells[i].ch != " " and out.cells[i].fg == CLOCK_COLOR for i in inside), t
+        plain = saver(show_clock=False).frame(t, W, H)
+        assert all(out.cells[i] == plain.cells[i] for i in range(W * H) if i not in inside_set)  # only the digits
+    green = saver(show_clock=True, palette="green").frame(rain.start + 6.0, W, H)
+    assert all(green.cells[i].fg == CLOCK_COLOR for i in inside)  # white in every palette
+
+
+def clock_and_rain(t: float) -> tuple[Grid, Grid]:
+    return saver(show_clock=True).frame(t, W, H), saver(show_clock=False).frame(t, W, H)
+
+
+def test_a_digit_cell_shows_the_drop_passing_through_it():
+    rain = rain_phase(saver())
+    inside = clock_mask("12:34", W, H)[0]
+    covered = 0
+    for k in range(40):
+        clock, plain = clock_and_rain(rain.start + 2.0 + k * 0.25)
+        for i in inside:
+            if plain.cells[i].ch != " ":  # a drop (head or tail) is in this cell
+                assert clock.cells[i].ch == plain.cells[i].ch
+                covered += 1
+    assert covered > 100
+
+
+def passages(i: int, times: list[float], frames: list[tuple[Grid, Grid]]) -> list[tuple[int, int]]:
+    """(first, last) frame indexes of each stretch during which no drop covers cell i."""
+    out, begin = [], None
+    for k, (_, plain) in enumerate(frames):
+        if plain.cells[i].ch == " ":
+            begin = k if begin is None else begin
+        elif begin is not None:
+            out.append((begin, k - 1))
+            begin = None
+    return out
+
+
+def test_the_glyph_a_drop_leaves_stays_until_the_next_drop():
+    rain = rain_phase(saver())
+    inside = clock_mask("12:34", W, H)[0]
+    times = [rain.start + 1.0 + k / 20 for k in range(160)]  # 8 s at 20 fps
+    frames = [clock_and_rain(t) for t in times]
+    kept = changed = same = 0
+    for i in inside[::7]:
+        gaps = [g for g in passages(i, times, frames) if g[0] > 0]  # after a drop has been here
+        for a, b in gaps:
+            glyphs = {frames[k][0].cells[i].ch for k in range(a, b + 1)}
+            assert len(glyphs) == 1, (i, a, b)  # unchanged until the next drop comes
+            kept += 1
+        for (a, _), (c, _) in zip(gaps, gaps[1:]):  # two gaps with a drop passing in between
+            if frames[a][0].cells[i].ch != frames[c][0].cells[i].ch:
+                changed += 1
+            else:
+                same += 1
+    assert kept > 20 and changed > 10 * max(1, same)  # the texture changes as the drops pass
+
+
+def test_before_the_first_drop_a_digit_cell_has_a_fixed_glyph():
+    ss = saver(show_clock=True)
+    rain = rain_phase(ss)
+    inside = clock_mask("12:34", W, H)[0]
+    a, b = ss.frame(rain.start, W, H), ss.frame(rain.start + 0.02, W, H)
+    untouched = [i for i in inside if saver().frame(rain.start + 0.02, W, H).cells[i].ch == " "]
+    assert untouched and all(a.cells[i].ch == b.cells[i].ch for i in untouched)
+    assert len({a.cells[i].ch for i in inside}) > 10  # hashed per cell, not one glyph everywhere
+    assert a == saver(show_clock=True).frame(rain.start, W, H)  # deterministic
 
 
 def test_clock_is_readable_within_a_second():
@@ -347,10 +405,17 @@ def test_clock_is_readable_within_a_second():
     assert mean_in > 3 * mean_out
 
 
-def test_outline_is_faint_persistent_and_fades():
-    ss = saver(show_clock=True)
+def ring(text: str = "12:34") -> list[int]:
+    """The cells just outside the digits."""
+    inside = set(clock_mask(text, W, H)[0])
+    return sorted({j for i in inside for j in (i - 1, i + 1, i - W, i + W)
+                   if 0 <= j < W * H and abs(j % W - i % W) <= 1 and j not in inside})
+
+
+def test_outline_is_optional_faint_persistent_and_fades():
+    ss = saver(show_clock=True, clock_outline=True)
     rain = rain_phase(ss)
-    _, edge = clock_mask("12:34", W, H)
+    edge = ring()
 
     def outline(t: float) -> list[Cell]:
         g = ss.frame(t, W, H)
@@ -362,7 +427,7 @@ def test_outline_is_faint_persistent_and_fades():
     early = outline(rain.start + CLOCK_FADE / 4)
     assert early and max(c.fg[0] for c in early) < mid[0].fg[0]
     assert not outline(rain.start)  # nothing at the very start
-    assert not [c for c in saver(show_clock=True, clock_outline=False).frame(rain.start + 10, W, H).cells
+    assert not [c for c in saver(show_clock=True).frame(rain.start + 10, W, H).cells  # off by default
                 if c.ch == OUTLINE_CHAR]
 
 
@@ -381,11 +446,12 @@ def test_clock_only_during_rain_and_in_endless_rain():
     ss = saver(show_clock=True, scenes=("skull",))
     hold = find(ss, "skull", "hold")
     assert not any(c.ch == OUTLINE_CHAR for c in ss.frame(quiet(hold), W, H).cells)
+    assert not any(c.fg == CLOCK_COLOR for c in ss.frame(quiet(hold), W, H).cells)
     endless = saver(loader=None, show_clock=True)
-    out = endless.frame(20.0, W, H)
     inside, _ = clock_mask("12:34", W, H)
-    assert any(out.cells[i].ch == OUTLINE_CHAR for i in inside)
-    assert all(min(out.cells[i].fg) >= 190 for i in inside if out.cells[i].ch not in (" ", OUTLINE_CHAR))
+    for t in (0.0, 20.0, 500.0):
+        out = endless.frame(t, W, H)
+        assert all(out.cells[i].ch != " " and out.cells[i].fg == CLOCK_COLOR for i in inside)
 
 
 # --- idle line ---------------------------------------------------------------------------

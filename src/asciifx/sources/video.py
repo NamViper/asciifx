@@ -148,8 +148,8 @@ def parse_probe(text: str) -> VideoInfo:
     width, height = int(size.group(1)), int(size.group(2))
     dar = _DAR.search(line)
     aspect = int(dar.group(1)) / int(dar.group(2)) if dar and int(dar.group(2)) else 0.0
-    if aspect <= 0:
-        aspect = width / height if height else 1.0
+    if aspect <= 0:  # a 0 aspect (e.g. "0x480" from a broken stream) divides by zero later
+        aspect = width / height if width and height else 1.0
     rotation = _ROTATION.search(block)
     if rotation and round(float(rotation.group(1))) % 180 == 90:
         width, height, aspect = height, width, 1.0 / aspect

@@ -273,7 +273,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--idle-since", type=float, metavar="EPOCH", help="when the user went idle (shown in the corner)")
     p.add_argument("--idle-for", type=_non_negative, metavar="SECONDS", help="idle this long already (for tmux)")
     p.add_argument("--no-clock", action="store_true", help="don't carve the time into the rain")
-    p.add_argument("--no-clock-outline", action="store_true", help="no faint outline around the clock digits")
+    p.add_argument("--clock-outline", action="store_true", help="faint dotted outline around the clock digits")
+    p.add_argument("--no-clock-outline", action="store_true", help=argparse.SUPPRESS)  # the default now; still accepted
     p.add_argument("--no-idle", action="store_true", help="hide the 'idle 14m · user@host' line")
     _color_arg(p)
 
@@ -295,7 +296,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--finale", choices=["shockwave", "lightning", "eyes"], help="finale (default: random)")
     _color_arg(p)
 
-    p = sub.add_parser("shell-init", help="print the zsh (or tmux) snippet for the banner and screensaver")
+    p = sub.add_parser("shell-init", help="print the zsh, bash or tmux snippet for the banner and screensaver")
     p.add_argument("shell", choices=["zsh", "bash", "tmux"],
                    help="zsh: ~/.zshrc blocks; bash: ~/.bashrc blocks (banner only); tmux: ~/.tmux.conf lock")
     p.add_argument("--name", default=os.environ.get("ASCIIFX_NAME"),
@@ -486,7 +487,7 @@ def _cmd_screensaver(args: argparse.Namespace) -> int:
     loader = default_loader(args.logo) if args.logo else None  # no logo: rain only
     saver = Screensaver(loader=loader, styles=args.styles, rain_seconds=args.rain_seconds, seed=seed,
                         scenes=scenes, palette=args.palette, idle_since=idle_since,
-                        show_clock=not args.no_clock, clock_outline=not args.no_clock_outline,
+                        show_clock=not args.no_clock, clock_outline=args.clock_outline and not args.no_clock_outline,
                         show_idle=not args.no_idle)
     play(saver, fps=args.fps, duration=args.duration, terminal=_terminal(args))
     return 0

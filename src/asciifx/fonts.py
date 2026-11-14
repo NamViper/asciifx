@@ -1411,10 +1411,20 @@ def get_font(font: str | Font) -> Font:
 # -- layout ---------------------------------------------------------------------
 
 
+_ZERO_WIDTH = ("Mn", "Me", "Cf")  # marks, plus format characters such as ZWJ and soft hyphen
+
+
 def _clean(line: str) -> str:
-    """Compose accents onto their letters and drop any marks left over (zero width)."""
+    """Compose accents onto their letters and drop any marks left over (zero width).
+
+    "Marks" includes variation selectors (``❤️`` is U+2764 U+FE0F), whose combining
+    class is 0, and zero-width format characters (ZWJ, ZWSP, BOM, soft hyphen):
+    each of them would otherwise be drawn as a tofu box of its own.
+    """
     line = unicodedata.normalize("NFC", line.rstrip("\r"))
-    return "".join(ch for ch in line if not unicodedata.combining(ch))
+    return "".join(
+        ch for ch in line if not unicodedata.combining(ch) and unicodedata.category(ch) not in _ZERO_WIDTH
+    )
 
 
 def _line_width(line: str, font: Font, letter_spacing: int) -> int:

@@ -197,7 +197,7 @@ class Lightning:
         a = t - strike - self.flash
         lit = self.afterglow * math.exp(-a / 0.22)
         if lit > 0.02:
-            q = round(lit * 24)
+            q = min(24, round(lit * 24))  # afterglow > 1 would extrapolate past white: RGB > 255
             cache: dict[Color | None, Color] = {}
             white = self.color
             for i, c in enumerate(out):

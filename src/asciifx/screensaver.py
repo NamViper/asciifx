@@ -36,8 +36,11 @@ cycles look the same. Rain drains to black before a scene, except before an
 odd cycle's skull intro, which is the rain painting the logo in.
 
 Overlays (all optional): during rain the current time (``HH:MM`` in the block
-font) is carved into the rain: drops inside the digits are drawn bright, with
-a faint outline. A dim ``idle 14m · user@host`` line sits bottom right.
+font) is carved into the rain. Every cell of the digits always shows a white
+glyph: the rain's own while a drop passes through it, then the one the drop
+left there, until the next drop changes it (see ``Screensaver._carve``). An
+optional faint outline rings the digits. A dim ``idle 14m · user@host`` line
+sits bottom right.
 
 ``palette`` is "blood", "green", a Palette, or "auto": blood by day (07-19 h
 local time) and green at night. It colors the rain, effects, panel and the
@@ -71,7 +74,8 @@ from .effects import (
     BLOOD, GREEN, MORPH_CHARSET, PALETTES, Chain, Decode, Fire, Glitch, Hologram, Matrix, Morph,
     Palette, Reverse, Starfield, hash32,
 )
-from .effects.base import Effect, gradient, lerp_color
+from .effects.base import Effect, cell_hashes, gradient, lerp_color, remix
+from .effects.matrix import _FRAME_SALT, _GLYPH_SALT, MATRIX_CHARSET  # to recompute the glyphs a drop left
 from .sysmon import Stats, SysMon, fmt_bytes, fmt_duration, fmt_rate
 
 type Loader = Callable[[str, int, int], Grid | None]
@@ -123,6 +127,7 @@ INFERNO_SCALE = 0.8
 HOLOGRAM_SCALE = 0.8
 
 CLOCK_FORMAT = "%H:%M"
+CLOCK_COLOR: Color = (240, 240, 240)  # the digits, in every palette
 CLOCK_FADE = 1.5  # the outline fades in / out over this long at the rain's ends
 CLOCK_BOX = (0.75, 0.35)  # the carved time is at most this share of the screen (w, h)
 OUTLINE_CHAR = "·"
@@ -133,6 +138,8 @@ _CYCLE_SALT = 0x5C2E
 _RAIN_SALT = 0x5C2F
 _ORDER_SALT = 0x5C30
 _SCENE_SALT = 0x5C31
+_CLOCK_SALT = 0x5C32
+_CLOCK_MEMO = 20000  # (run, column, glyph slot) hashes kept for the clock
 _WHITE: Color = (255, 255, 255)
 _BLACK: Color = (0, 0, 0)
 
@@ -187,6 +194,13 @@ def rain_layers(
     thins out before ``end + extend``. ``end`` may be ``math.inf``. Consecutive
     runs overlap so the seams don't show.
     """
+    return [run for run, e in _rain_runs(t, height, start, end, seed, extend, palette, 1) if t < e]
+
+
+def _rain_runs(t: float, height: int, start: float, end: float, seed: int, extend: float,
+               palette: Palette, back: int) -> list[tuple[Matrix, float]]:  # fmt: skip
+    """(run, its end) for the runs ``back`` before the one t falls in up to that
+    one, oldest first, whether they have ended or not (see ``rain_layers``)."""
     length = end - start
     if not length > 0:
         return []
@@ -198,20 +212,18 @@ def rain_layers(
     tail = _rain_tail(height)
     overlap = _rain_overlap(height)
     out = []
-    for i in (j - 1, j):
+    for i in range(j - back, j + 1):
         if i < 0:
             continue
         s = start + i * seg
         e = s + seg + overlap
         if n is not None:
             e = end + extend if i == n - 1 else min(e, end + extend)
-        if t >= e:
-            continue
-        out.append(Matrix(
+        out.append((Matrix(
             start=s, duration=e - s, reveal=False, speed=RAIN_SPEED,
             spread=min(0.95, RAIN_RAMP / (e - s)), drops=int((e - s) * RAIN_SPEED) + 2,
             tail_len=tail, head=palette.head, tail=palette.tail, seed=hash32(seed, _RAIN_SALT, i),
-        ))  # fmt: skip
+        ), e))  # fmt: skip
     return out
 
 
@@ -307,6 +319,29 @@ def clock_mask(text: str, width: int, height: int) -> tuple[tuple[int, ...], tup
                    for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1))):  # fmt: skip
                 edge.append(i)
     return tuple(inside), tuple(edge)
+
+
+type _ClockLayout = tuple[tuple[tuple[int, tuple[int, ...]], ...], tuple[int, ...]]
+
+
+@lru_cache(maxsize=8)
+def _clock_layout(text: str, width: int, height: int) -> _ClockLayout | None:
+    """``clock_mask(text, ...)`` as (column, its rows top-down) pairs, and the
+    ring of cells just outside the digits (for the outline). None if it doesn't fit."""
+    mask = clock_mask(text, width, height)
+    if mask is None:
+        return None
+    inside = set(mask[0])
+    columns: dict[int, list[int]] = {}
+    for i in mask[0]:
+        columns.setdefault(i % width, []).append(i // width)
+    ring = set()
+    for i in inside:
+        x, y = i % width, i // width
+        for nx, ny in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)):
+            if 0 <= nx < width and 0 <= ny < height and ny * width + nx not in inside:
+                ring.add(ny * width + nx)
+    return tuple((x, tuple(sorted(rows))) for x, rows in sorted(columns.items())), tuple(sorted(ring))
 
 
 # -- the sysmon panel ----------------------------------------------------------------
@@ -450,7 +485,8 @@ class Screensaver:
     epoch seconds (read once per frame): time of day for the carved clock and
     the auto palette, and the idle time, counted from ``idle_since`` (epoch of
     the last keypress; None: from when the screensaver started).
-    ``show_clock`` / ``clock_outline`` / ``show_idle`` switch the overlays;
+    ``show_clock`` / ``clock_outline`` (off by default: the solid digits
+    read better without it) / ``show_idle`` switch the overlays;
     ``user_host`` overrides the detected ``user@host``. ``monitor`` feeds the
     sysmon scene (default: a ``SysMon`` reading /proc).
     """
@@ -463,7 +499,7 @@ class Screensaver:
     scenes: tuple[str, ...] = SCENES
     clock: Callable[[], float] = time.time
     show_clock: bool = True
-    clock_outline: bool = True
+    clock_outline: bool = False
     idle_since: float | None = None
     show_idle: bool = True
     user_host: str | None = None
@@ -769,12 +805,16 @@ class Screensaver:
     def _rain_over(self, grid: Grid, t: float, rain: Phase, palette: Palette) -> Grid:
         """``grid`` with the rain of phase ``rain`` drawn over it at t. The rain
         runs on into the next phase when that is a skull intro the rain paints in."""
-        nxt = self._neighbour(rain, +1, palette)
-        feeds = nxt.scene == "skull" and isinstance(nxt.effect, Matrix)
-        extend = min(INTRO, _rain_overlap(grid.height)) if feeds else 0.0
+        extend = self._rain_extend(rain, grid.height, palette)
         for layer in rain_layers(t, grid.height, rain.start, rain.end, rain.seed, extend, palette):
             grid = layer.apply(grid, t)
         return grid
+
+    def _rain_extend(self, rain: Phase, height: int, palette: Palette) -> float:
+        """How long the rain of phase ``rain`` runs on into the next phase."""
+        nxt = self._neighbour(rain, +1, palette)
+        feeds = nxt.scene == "skull" and isinstance(nxt.effect, Matrix)
+        return min(INTRO, _rain_overlap(height)) if feeds else 0.0
 
     def _morph(self, phase: Phase, target: Grid, palette: Palette) -> Morph:
         key = (phase.start, target.width, target.height)
@@ -789,28 +829,92 @@ class Screensaver:
             self._morphs[key] = morph
         return morph
 
-    def _carve(self, grid: Grid, t: float, now: float, palette: Palette, start: float, end: float) -> Grid:
-        """The time carved into the rain on ``grid`` (modified in place)."""
+    def _carve(self, grid: Grid, t: float, now: float, palette: Palette, start: float, end: float,
+               seed: int, extend: float = 0.0) -> Grid:  # fmt: skip
+        """The time drawn into the rain on ``grid`` (modified in place).
+
+        ``grid`` is the rain of [start, end] (``rain_layers`` with ``seed`` and
+        ``extend``) at t on a blank background. Every cell inside the digits
+        shows a glyph in ``CLOCK_COLOR``: while a drop covers the cell, the
+        rain's glyph there; once it has passed, the glyph that drop showed there
+        last, until the next drop passes; before the first one, a glyph of the
+        rain's charset hashed from the cell. All of it follows from the rain's
+        schedule at t (no state carried between frames), so it is a pure function
+        of t; the hashes it needs are memoized (bounded).
+        """
         if not self.show_clock:
             return grid
-        mask = clock_mask(time.strftime(CLOCK_FORMAT, time.localtime(now)), grid.width, grid.height)
-        if mask is None:
+        w, h = grid.width, grid.height
+        layout = _clock_layout(time.strftime(CLOCK_FORMAT, time.localtime(now)), w, h)
+        if layout is None:
             return grid
-        inside, edge = mask
+        columns, ring = layout
         cells = grid.cells
-        bright: dict[Color | None, Color] = {}
-        for i in inside:
-            c = cells[i]
-            if c.ch != " ":
-                fg = bright.get(c.fg)
-                if fg is None:
-                    fg = bright[c.fg] = lerp_color(c.fg or palette.head, _WHITE, 0.75)
-                cells[i] = Cell(c.ch, fg, c.bg)
+        # Rain runs, newest first; one ended before is enough to know what every
+        # cell's last drop was (the run after it has long covered every row).
+        runs = []
+        for run, _ in reversed(_rain_runs(t, h, start, end, seed, extend, palette, 2)):
+            runs.append((run.seed, run.start, run.end, run.rate, run.columns(w, h),
+                         cell_hashes(run.seed, _GLYPH_SALT, w, h)))  # fmt: skip
+        charset, nc = MATRIX_CHARSET, len(MATRIX_CHARSET)  # the rain's (rain_layers keeps the default)
+        first = cell_hashes(seed, _CLOCK_SALT, w, h)  # before any drop has passed
+        memo: dict[tuple[int, int, int], int] = self._state.setdefault("clock_memo", {})
+        if len(memo) > _CLOCK_MEMO:
+            memo.clear()
+        white: dict[str, Cell] = {}
+        for x, rows in columns:
+            # Per run: the drops that have entered this column, [head row, spawn]
+            # (heads fall as later drops come), and a pointer to the latest drop
+            # that has left the row looked at: rows only go down, so it only moves back.
+            drops = []
+            for rseed, r0, r1, rate, cols, rnd in runs:
+                col = cols[x]
+                if t >= r1:  # ended: every drop has left every row
+                    heads = [(1 << 30, sp) for sp in col.spawns]
+                else:
+                    el, v = t - r0, col.speed
+                    heads = []
+                    for sp in col.spawns:
+                        head = math.floor((el - sp) * v) - 1  # exactly as Matrix.apply
+                        if head < 0:
+                            break
+                        heads.append((head, sp))
+                drops.append([len(heads) - 1, heads, col, rseed, r0, r1, rate, rnd])
+            for y in rows:
+                i = y * w + x
+                ch = cells[i].ch
+                if ch == " ":  # no drop here now: the glyph the last one left
+                    best, pick = -math.inf, None
+                    for d in drops:
+                        if d[5] <= best:  # this run (and older ones) ended before that drop left
+                            break
+                        k, heads, col = d[0], d[1], d[2]
+                        need = y + col.tail  # the drop's tail has left row y once its head is here
+                        while k >= 0 and heads[k][0] < need:
+                            k -= 1
+                        d[0] = k
+                        if k >= 0:
+                            left = d[4] + heads[k][1] + (need + 1) / col.speed
+                            if left > best:
+                                best, pick = left, d
+                    if pick is None:
+                        ch = charset[first[i] % nc]
+                    else:
+                        col, rseed = pick[2], pick[3]
+                        slot = math.ceil(best * pick[6] + col.phase) - 1  # Matrix's glyph slot just before it left
+                        b = memo.get((rseed, x, slot))
+                        if b is None:
+                            b = memo[(rseed, x, slot)] = hash32(rseed, _FRAME_SALT, x, slot)
+                        ch = charset[remix(pick[7][i], b) % nc]
+                cell = white.get(ch)
+                if cell is None:
+                    cell = white[ch] = Cell(ch, CLOCK_COLOR)
+                cells[i] = cell
         if self.clock_outline:
             a = max(0.0, min(1.0, (t - start) / CLOCK_FADE, (end - t) / CLOCK_FADE))
             if a > 0:
                 faint = Cell(OUTLINE_CHAR, lerp_color(_BLACK, palette.tail[0], 0.5 * a))
-                for i in edge:
+                for i in ring:
                     c = cells[i]
                     if c.ch == " " and c.bg is None:
                         cells[i] = faint
@@ -981,12 +1085,13 @@ class Screensaver:
             out = Grid(width, height)
             for layer in rain_layers(t, height, 0.0, math.inf, self.seed, palette=palette):
                 out = layer.apply(out, t)
-            out = self._carve(out, t, now, palette, 0.0, math.inf)
+            out = self._carve(out, t, now, palette, 0.0, math.inf, self.seed)
         else:
             phase = self.phase_at(t, palette)
             if phase.name == "rain":
                 out = self._rain_over(Grid(width, height), t, phase, palette)
-                out = self._carve(out, t, now, palette, phase.start, phase.end)
+                extend = self._rain_extend(phase, height, palette)
+                out = self._carve(out, t, now, palette, phase.start, phase.end, phase.seed, extend)
             else:
                 out = self._scene(phase, t, width, height, logos, palette, now)
         return self._idle(out, t, now, palette)

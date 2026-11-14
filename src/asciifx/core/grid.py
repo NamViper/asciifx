@@ -115,8 +115,41 @@ class Grid:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Grid:
+        """Inverse of ``to_dict``. Raises ValueError on malformed data.
+
+        Everything is checked: the data may come from a file (the startup logo
+        cache), and a color component that isn't an int 0..255 would reach the
+        terminal inside an escape sequence or crash the 256-color renderer.
+        """
+        width, height = data["width"], data["height"]
+        if type(width) is not int or type(height) is not int or width < 0 or height < 0:
+            raise ValueError(f"bad grid size {width!r} x {height!r}")
         palette = [
-            Cell(ch, tuple(fg) if fg else None, tuple(bg) if bg else None)  # type: ignore[arg-type]
-            for ch, fg, bg in data["palette"]
+            Cell(_dict_glyph(ch), _dict_color(fg), _dict_color(bg)) for ch, fg, bg in data["palette"]
         ]
-        return cls(data["width"], data["height"], [palette[i] for i in data["cells"]])
+        indexes = data["cells"]
+        # Checked before Grid(): it would fill an empty cell list with width * height BLANKs.
+        if len(indexes) != width * height:
+            raise ValueError(f"expected {width * height} cells, got {len(indexes)}")
+        n = len(palette)
+        if not all(type(i) is int and 0 <= i < n for i in indexes):
+            raise ValueError(f"cells must be palette indexes 0..{n - 1}")
+        return cls(width, height, [palette[i] for i in indexes])
+
+
+def _dict_glyph(ch: Any) -> str:
+    if type(ch) is not str or len(ch) != 1:
+        raise ValueError(f"bad glyph {ch!r}: expected a one-character string")
+    return ch
+
+
+def _dict_color(value: Any) -> Color | None:
+    if value is None:
+        return None
+    if (
+        type(value) in (list, tuple)
+        and len(value) == 3
+        and all(type(v) is int and 0 <= v <= 255 for v in value)
+    ):
+        return value[0], value[1], value[2]
+    raise ValueError(f"bad color {value!r}: expected null or [r, g, b] with ints 0..255")

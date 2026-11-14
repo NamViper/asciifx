@@ -85,9 +85,13 @@ bottom-right corner. Without a logo it is endless rain with the clock.
 | `sysmon` | a live system monitor: CPU, memory, load, uptime, tasks, network |
 
 Options: `--scenes skull,warp,…` (default: all five), `--palette auto|blood|green` (auto = blood red
-07:00–19:00, green at night), `--rain-seconds 30`, `--no-clock`, `--no-clock-outline`, `--no-idle`,
+07:00–19:00, green at night), `--rain-seconds 30`, `--no-clock`, `--clock-outline`, `--no-idle`,
 `--idle-since EPOCH` / `--idle-for SECONDS` (where the idle counter starts; the zsh and tmux blocks pass
 these), `--seed N`, `--fps 20`, `--duration S`.
+
+During rain the current time is drawn in solid white digits; each digit cell takes the glyph of the
+drop passing through it and keeps it until the next drop. The shell blocks skip `TERM=dumb` shells
+(e.g. Emacs), and the zsh screensaver block steps aside if `TMOUT` is read-only on the host.
 
 ## Summon
 
